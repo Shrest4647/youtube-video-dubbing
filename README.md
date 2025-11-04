@@ -32,7 +32,7 @@ This project was created so that older generations, like my mom, can enjoy high-
 2.  Install the required Python packages:
 
     ```bash
-    pip install -r requirements.txt
+    uv sync
     ```
 
     _(Note: A `requirements.txt` file is not present, but the dependencies are listed in `pyproject.toml`. The command above is a standard practice.)_
@@ -44,7 +44,7 @@ This project was created so that older generations, like my mom, can enjoy high-
 The main script is `custom_dubber/main.py`. You can run it from the command line with the following arguments:
 
 ```bash
-python -m custom_dubber.main \
+uv run -m custom_dubber.main \
     --youtube_id <YOUTUBE_VIDEO_ID> \
     --target_language <TARGET_LANGUAGE_CODE> \
     --api_keys <YOUR_GEMINI_API_KEY_1> <YOUR_GEMINI_API_KEY_2> \
@@ -71,7 +71,7 @@ python -m custom_dubber.main \
 ### Example
 
 ```bash
-python -m custom_dubber.main \
+uv run -m custom_dubber.main \
     --youtube_id "dQw4w9WgXcQ" \
     --target_language "ne" \
     --api_keys "YOUR_API_KEY" \
@@ -111,3 +111,15 @@ python -m custom_dubber.main \
 3.  **Synthesize Speech**: The translated text segments are converted into audio using Google Gemini's text-to-speech models. This is done in parallel to speed up the process.
 4.  **Process Audio**: The newly generated audio clips are inserted at their corresponding timestamps into the original audio track.
 5.  **Finalize Video**: The final step involves combining the newly created dubbed audio track with the original video file, resulting in a fully dubbed video.
+
+## Shoutouts and Motivation
+
+A big shoutout to the [open-dubbing](https://github.com/Softcatala/open-dubbing) project, which served as a major inspiration for this tool. `open-dubbing` is an AI dubbing system that uses machine learning models to automatically translate and synchronize audio dialogue into different languages. While `open-dubbing` is focused on general video dubbing, this project is more narrowly focused on YouTube videos.
+
+At the moment, this tool is purely experimental and an excuse to help all people watch better YouTube content.
+
+Star this repo if you think YouTube should automatically implement such dubbing, given the dire situation of their current video dubbing attempts.
+
+## Feedback
+
+If you found this project useful and think it would be beneficial to publish it as a CLI package on PyPI, please let me know by raising an issue [here](https://github.com/Shrest4647/youtube-video-dubbing/issues/new).
