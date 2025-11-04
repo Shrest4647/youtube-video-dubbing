@@ -122,4 +122,4 @@ Star this repo if you think YouTube should automatically implement such dubbing,
 
 ## Feedback
 
-If you found this project useful and think it would be beneficial to publish it as a CLI package on PyPI, please let me know by raising an issue [here](https://github.com/Shrest4647/youtube-video-dubbing/issues/new).
+If you found this project useful and think it would be beneficial to publish it as a CLI package on PyPI, please let me know by raising an issue [here](issues/new).
