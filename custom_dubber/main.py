@@ -31,6 +31,12 @@ def main(
 ):
     # Create output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
+    # copy the ignore file to output directory
+
+    shutil.copyfile(
+        os.path.join(Path(__file__).parent.parent, ".gitignore.template"),
+        os.path.join(output_directory, ".gitignore"),
+    )
 
     download_metadata_file = os.path.join(output_directory, "download_metadata.json")
     download_metadata = {}
@@ -115,7 +121,7 @@ def main(
         updated_transcripts = []
         api_key_cycle = cycle(api_keys)
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(api_keys)
+            max_workers=1  # len(api_keys)
         ) as executor:
             futures = [
                 executor.submit(

@@ -13,17 +13,15 @@
 # limitations under the License.
 
 import os
+import subprocess
 import time
 import warnings
 
 from typing import Final
 
 from moviepy import (
-    AudioClip,
     AudioFileClip,
     VideoFileClip,
-    concatenate_videoclips,
-    concatenate_audioclips,
 )
 
 _DEFAULT_FPS: Final[int] = 30
@@ -67,15 +65,14 @@ class VideoProcessing:
         """
         print("Combining audio and video...")
 
+        # Get video and audio durations using MoviePy
         video = VideoFileClip(video_file)
         audio = AudioFileClip(dubbed_audio_file)
-        duration_difference = video.duration - audio.duration
-        if duration_difference > 0:
-            silence = AudioClip(lambda t: 0, duration=duration_difference)
-            audio = concatenate_audioclips([audio, silence])
-        elif duration_difference < 0:
-            audio = audio.subclipped(0, video.duration)
-        final_clip = video.with_audio(audio)
+        video_duration = video.duration
+        audio_duration = audio.duration
+        video.close()
+        audio.close()
+
         target_language_suffix = "_" + target_language.replace("-", "_").lower()
         dubbed_video_file = os.path.join(
             output_directory,
@@ -83,16 +80,93 @@ class VideoProcessing:
             + target_language_suffix
             + _DEFAULT_OUTPUT_FORMAT,
         )
+
         print("Started final video rendering...")
         start_time = time.time()
-        final_clip.write_videofile(
+
+        # Use FFmpeg directly for much faster processing with stream copying
+        # This avoids re-encoding the video, making it 10-100x faster
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",  # Overwrite output file without asking
+            "-i",
+            video_file,  # Input video
+            "-i",
+            dubbed_audio_file,  # Input audio
+            "-map",
+            "0:v:0",  # Map video stream from first input
+            "-map",
+            "1:a:0",  # Map audio stream from second input
+            "-c:v",
+            "copy",  # Copy video codec (no re-encoding)
+            "-c:a",
+            "aac",  # Encode audio to AAC
+            "-b:a",
+            "192k",  # Audio bitrate
+            "-shortest",  # Finish encoding when shortest stream ends
+            "-movflags",
+            "+faststart",  # Enable streaming optimization (moov atom at start)
+            "-threads",
+            "0",  # Use all available CPU threads
             dubbed_video_file,
-            codec="libx264",
-            audio_codec="aac",
-            temp_audiofile="temp-audio.m4a",
-            remove_temp=True,
-            logger=None,
-        )
+        ]
+
+        # If audio is shorter than video, we need to pad it with silence
+        if audio_duration < video_duration:
+            print(
+                f"Audio is {video_duration - audio_duration:.2f}s shorter than video, padding with silence..."
+            )
+            # Create a temporary audio file with silence padding
+            temp_audio = os.path.join(output_directory, "temp_padded_audio.aac")
+            pad_duration = video_duration - audio_duration
+
+            # Use FFmpeg to pad audio with silence
+            pad_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                dubbed_audio_file,
+                "-f",
+                "lavfi",
+                "-i",
+                f"anullsrc=channel_layout=stereo:sample_rate=44100:duration={pad_duration}",
+                "-filter_complex",
+                "[0:a][1:a]concat=n=2:v=0:a=1",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                temp_audio,
+            ]
+            subprocess.run(
+                pad_cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Update the command to use padded audio
+            ffmpeg_cmd[4] = temp_audio
+
+        # Run FFmpeg command
+        try:
+            subprocess.run(
+                ffmpeg_cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Clean up temporary file if created
+            if audio_duration < video_duration:
+                temp_audio = os.path.join(output_directory, "temp_padded_audio.aac")
+                if os.path.exists(temp_audio):
+                    os.remove(temp_audio)
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error during video rendering: {e}")
+            raise
+
         end_time = time.time()
         print(
             f"Final video rendering completed in {end_time - start_time:.2f} seconds."

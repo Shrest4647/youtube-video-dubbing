@@ -17,6 +17,10 @@ from time import sleep
 from typing import List, NamedTuple
 import mimetypes
 import struct
+import hashlib
+import json
+from pathlib import Path
+import shutil
 
 from google import genai
 from google.genai import types, errors
@@ -127,7 +131,7 @@ def _parse_audio_mime_type(mime_type: str) -> dict[str, int | None]:
 
 # Documentation: https://ai.google.dev/docs/gemini_api_overview
 class TextToSpeechGemini:
-    def __init__(self, device="cpu", server="", api_key=""):
+    def __init__(self, device="cpu", server="", api_key="", cache_dir=".tts_cache"):
         self._SSML_MALE: str = "Male"
         self._SSML_FEMALE: str = "Female"
         self._DEFAULT_SPEED: float = 1.0
@@ -137,6 +141,8 @@ class TextToSpeechGemini:
         self.api_key = api_key
         self.model = "gemini-2.5-flash-preview-tts"
         self.backup_model = "gemini-2.5-pro-preview-tts"
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(exist_ok=True)
 
     def set_api_key(self, api_key: str):
         self.client = genai.Client(
@@ -227,6 +233,44 @@ class TextToSpeechGemini:
 
         return dubbed_file
 
+    def _get_cache_key(
+        self,
+        *,
+        assigned_voice: str,
+        target_language: str,
+        text: str,
+        speed: float,
+        backup: bool = False,
+    ) -> str:
+        """Generate a unique cache key based on input parameters."""
+        cache_data = {
+            "assigned_voice": assigned_voice,
+            "target_language": target_language,
+            "text": text,
+            "speed": speed,
+            "backup": backup,
+            "model": self.backup_model if backup else self.model,
+        }
+        cache_string = json.dumps(cache_data, sort_keys=True)
+        return hashlib.sha256(cache_string.encode()).hexdigest()
+
+    def _get_cached_audio(self, cache_key: str) -> str | None:
+        """Retrieve cached audio file if it exists."""
+        cache_file = self.cache_dir / f"{cache_key}.wav"
+        if cache_file.exists():
+            logger().debug(f"Cache hit for key: {cache_key}")
+            return str(cache_file)
+        return None
+
+    def _save_to_cache(self, cache_key: str, audio_file: str) -> None:
+        """Save audio file to cache."""
+        cache_file = self.cache_dir / f"{cache_key}.wav"
+        try:
+            shutil.copy2(audio_file, cache_file)
+            logger().debug(f"Saved to cache: {cache_key}")
+        except Exception as e:
+            logger().warning(f"Failed to save to cache: {e}")
+
     def _convert_text_to_speech(
         self,
         *,
@@ -241,6 +285,27 @@ class TextToSpeechGemini:
             f"text_to_speech_gemini._convert_text_to_speech: assigned_voice: {assigned_voice}, output_filename: '{output_filename}'"
         )
 
+        # Check cache first
+        # cache_key = self._get_cache_key(
+        #     assigned_voice=assigned_voice,
+        #     target_language=target_language,
+        #     text=text,
+        #     speed=speed,
+        #     backup=backup,
+        # )
+
+        # cached_file = self._get_cached_audio(cache_key)
+        # if cached_file:
+        #     # Copy cached file to output location
+        #     try:
+        #         shutil.copy2(cached_file, output_filename)
+        #         logger().info(f"Using cached audio for: {output_filename}")
+        #         return output_filename
+        #     except Exception as e:
+        #         logger().warning(
+        #             f"Failed to copy cached file: {e}, generating new audio"
+        #         )
+
         contents = [
             types.Content(
                 role="user",
@@ -248,9 +313,9 @@ class TextToSpeechGemini:
                     types.Part.from_text(
                         text=f"""
                         <style-instruction>
-                        The following is a dub of a documentary. 
+                        The following is a dub of a documentary in {target_language} language. 
                         Take pauses and intonate accordingly. 
-                        Read aloud in a calm, soothing, enthusiastic tone like David Attenborough:
+                        Read aloud in a calm, soothing, enthusiastic tone like David Attenborough at a good pace:
                         </style-instruction>
                         {text}
                     """
@@ -301,6 +366,9 @@ class TextToSpeechGemini:
             try:
                 with open(output_filename, "wb") as f:
                     f.write(bytes(full_audio_data))
+
+                # Save to cache
+                # self._save_to_cache(cache_key, output_filename)
 
                 return output_filename
 
